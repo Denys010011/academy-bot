@@ -1,18 +1,18 @@
-
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from flask import Flask, request
 import json
-
-# Замените этот токен на свой
 import os
+
 TOKEN = os.getenv("BOT_TOKEN")
 bot = telebot.TeleBot(TOKEN)
 
-# Загружаем структуру бота из JSON-файла
+app = Flask(__name__)
+
+# Загружаем структуру бота
 with open("bot_structure_full.json", "r", encoding="utf-8") as f:
     structure = json.load(f)
 
-# Создание клавиатуры по текущему узлу
 def create_keyboard(node_key):
     markup = InlineKeyboardMarkup()
     node = structure.get(node_key)
@@ -22,14 +22,12 @@ def create_keyboard(node_key):
         markup.add(InlineKeyboardButton(button["text"], callback_data=button["next"]))
     return markup
 
-# Обработка команды /start
 @bot.message_handler(commands=["start"])
 def handle_start(message):
     node = structure["start"]
     markup = create_keyboard("start")
     bot.send_message(message.chat.id, node["text"], reply_markup=markup)
 
-# Обработка всех нажатий на inline-кнопки
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback(call):
     node_key = call.data
@@ -45,6 +43,22 @@ def handle_callback(call):
         reply_markup=markup
     )
 
-# Запуск бота
-print("Бот запущен.")
-bot.infinity_polling()
+@app.route('/' + TOKEN, methods=['POST'])
+def webhook():
+    json_str = request.get_data().decode('utf-8')
+    update = telebot.types.Update.de_json(json_str)
+    bot.process_new_updates([update])
+    return '', 200
+
+@app.route('/')
+def index():
+    return 'Бот работает!', 200
+
+if __name__ == "__main__":
+    # Установка webhook при старте
+    url = os.getenv("WEBHOOK_URL")  # Например: https://your-app-name.onrender.com
+    bot.remove_webhook()
+    bot.set_webhook(url=f"{url}/{TOKEN}")
+
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
